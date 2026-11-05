@@ -12,10 +12,13 @@ FreeTurn for macOS 13+ (Apple Silicon / Intel)
 5. FT in the menu bar opens or quits FreeTurn. Closing the window can keep the
    connection active; use Disconnect or Quit to stop it.
 
-Updates: download from Settings or the repository Releases page. Quit FreeTurn,
-replace the complete .app in Applications, and reopen it. Profiles remain in
-~/Library/Application Support/FreeTurnDesktop. Automatic bundle replacement is
-not enabled in this first macOS release.
+Updates: install v0.2.0 manually once. Later, Settings > Download and install
+verifies the release and asks before disconnecting the VPN and restarting.
+The entire app and helper are replaced together. Failed startup restores the
+previous version. Your account needs write access to /Applications or
+~/Applications. Profiles remain in ~/Library/Application Support/FreeTurnDesktop.
+The previous app is retained in a private .freeturn-mac-update-* folder beside
+FreeTurn.app. Manual installation from Releases remains available.
 
 No Developer ID signature/notarization is included unless the release explicitly
 says otherwise. No credentials are needed for downloading releases.

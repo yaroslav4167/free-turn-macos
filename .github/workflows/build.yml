@@ -35,7 +35,7 @@ jobs:
       - name: Build signed app bundle
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: v0.1.1
+          RELEASE_TAG: v0.2.0
           UPDATE_REPOSITORY: ${{ github.repository }}
         run: sh packaging/macos/build-desktop.sh
       - name: Frontend regression checks
@@ -49,6 +49,14 @@ jobs:
         run: |
           go test -c ./desktop/backend/wintunnel -o "$RUNNER_TEMP/wintunnel-routing.test"
           sudo -n env FREETURN_PRIVILEGED_TESTS=1 "$RUNNER_TEMP/wintunnel-routing.test" -test.run '^TestMacPrivilegedScopedRouting$' -test.v -test.timeout 45s
+      - name: Validate packaged app with the updater
+        env:
+          MACOS_ARCH: ${{ matrix.arch }}
+          RELEASE_TAG: v0.2.0
+        run: |
+          export FREETURN_TEST_MACOS_ARCHIVE="$PWD/dist/FreeTurn-macOS-${MACOS_ARCH}-${RELEASE_TAG}.zip"
+          export FREETURN_TEST_MACOS_VERSION="$RELEASE_TAG"
+          go test ./desktop/updates -run '^TestMacPackagedArchive$' -v -count=1
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: FreeTurn-macOS-${{ matrix.arch }}

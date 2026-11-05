@@ -13,9 +13,8 @@ import (
 
 const Supported = true
 
-// App bundles are replaced using Finder after a verified download. Linux's
-// executable-patching updater must never rewrite a signed macOS bundle.
-const CanInstallUpdates = false
+// macOS updates replace the entire verified bundle, including the VPN helper.
+const CanInstallUpdates = true
 
 func bundlePath() (string, error) {
 	exe, err := os.Executable()

@@ -81,6 +81,9 @@ func (a *App) DownloadUpdate() error {
 }
 
 func (a *App) InstallUpdate() error {
+	if handled, err := a.installPlatformUpdate(); handled {
+		return err
+	}
 	if !integration.CanInstallUpdates {
 		return errors.New("скачайте обновление и замените FreeTurn.app через Finder")
 	}

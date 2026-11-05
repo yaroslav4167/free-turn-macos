@@ -24,7 +24,9 @@ The first build asks for authorization on each VPN connection. It installs no pe
 
 **FT** in the menu bar opens or quits FreeTurn. Close-to-menu-bar, start at login and optional auto-connect are available in Settings. Start at login requires the app to be in `/Applications` or `~/Applications`; macOS may show it under Login Items. Captcha notifications ask for notification permission, and open verification only after a click. The in-app notification remains available if system notifications are denied.
 
-Updates are checked in this repository and downloaded with SHA-256 verification. Quit FreeTurn and replace the entire `.app` in Applications using Finder. Automatic bundle replacement is disabled in this initial version.
+FreeTurn checks this repository for updates automatically. In Settings, choose **Download and install** and confirm the restart. The updater verifies the SHA-256 checksum, native architecture and complete bundle signature, disconnects the VPN, replaces the entire app including its helper, and restarts it. If the new interface fails to start, the previous version is restored. Profiles and preferences are retained.
+
+Install v0.2.0 manually once to enable in-app installation. Keep FreeTurn.app in `/Applications` or `~/Applications`; your account must be able to write to that folder. If a managed Applications folder is protected, use `~/Applications` or install manually. Installation always requires confirmation. The previous bundle and update logs are retained in a private `.freeturn-mac-update-*` folder beside the app; its location is included in the update result.
 
 Profiles and preferences are stored in `~/Library/Application Support/FreeTurnDesktop`. To uninstall, disable start at login in Settings, quit FreeTurn, and move its bundle to Trash. Removing the app retains profiles.
 
@@ -33,7 +35,7 @@ Profiles and preferences are stored in `~/Library/Application Support/FreeTurnDe
 Install Xcode Command Line Tools, the Go version in `go.mod`, and Node.js 22.18+.
 
 ```sh
-UPDATE_REPOSITORY=yaroslav4167/free-turn-macos RELEASE_TAG=v0.1.1 sh packaging/macos/build-desktop.sh
+UPDATE_REPOSITORY=yaroslav4167/free-turn-macos RELEASE_TAG=v0.2.0 sh packaging/macos/build-desktop.sh
 ```
 
 The script builds Wails v2.16.0, packages the native VPN helper inside the app, ad-hoc signs the bundle, verifies its signature, and produces a ZIP and SHA-256 in `dist/`. `MACOS_ARCH=arm64` or `MACOS_ARCH=amd64` selects the architecture. GitHub Actions builds and tests each architecture on its own macOS runner.

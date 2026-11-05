@@ -184,6 +184,10 @@ func validateBinary(filename, arch string) error {
 }
 
 func supportsInstallProtocol(filename string) bool {
+	return supportsMarker(filename, InstallProtocolMarker)
+}
+
+func supportsMarker(filename, marker string) bool {
 	file, err := os.Open(filename)
 	if err != nil {
 		return false
@@ -194,14 +198,14 @@ func supportsInstallProtocol(filename string) bool {
 	for {
 		n, err := file.Read(buffer)
 		data := append(tail, buffer[:n]...)
-		if bytes.Contains(data, []byte(InstallProtocolMarker)) {
+		if bytes.Contains(data, []byte(marker)) {
 			return true
 		}
 		if err != nil {
 			return false
 		}
-		if len(data) >= len(InstallProtocolMarker) {
-			tail = append([]byte(nil), data[len(data)-len(InstallProtocolMarker)+1:]...)
+		if len(data) >= len(marker) {
+			tail = append([]byte(nil), data[len(data)-len(marker)+1:]...)
 		}
 	}
 }
