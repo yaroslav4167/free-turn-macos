@@ -6,13 +6,15 @@ FreeTurn for macOS 13+ (Apple Silicon / Intel)
    System Settings > Privacy & Security > Open Anyway after an attempted launch.
    Do not disable Gatekeeper globally.
 3. Add/import a profile. VPN mode requires a WireGuard/AmneziaWG client config.
-4. Connecting in VPN mode requests administrator authorization to run the
-   bundled helper. Only the helper creates utun and changes network routes/DNS;
+4. The first VPN connection requests administrator authorization to install a
+   persistent helper. Later connections, including after a reboot, need no new
+   password prompt. Only the helper creates utun and changes network routes/DNS;
    the GUI and VPN protocol engine remain unprivileged.
 5. FT in the menu bar opens or quits FreeTurn. Closing the window can keep the
    connection active; use Disconnect or Quit to stop it.
 
-Updates: install v0.2.0 manually once. Later, Settings > Download and install
+Updates: v0.2.0 and later can update from Settings > Download and install.
+When upgrading from v0.1.x, replace the entire app manually once. The updater
 verifies the release and asks before disconnecting the VPN and restarting.
 The entire app and helper are replaced together. Failed startup restores the
 previous version. Your account needs write access to /Applications or
@@ -22,3 +24,10 @@ FreeTurn.app. Manual installation from Releases remains available.
 
 No Developer ID signature/notarization is included unless the release explicitly
 says otherwise. No credentials are needed for downloading releases.
+
+Before uninstalling, disconnect and remove the system helper with:
+"/Applications/FreeTurn.app/Contents/MacOS/freeturn-desktop" --remove-vpn-helper
+This requests administrator authorization once. Then quit and trash the app.
+To repair or explicitly upgrade the system helper, use --configure-vpn-helper.
+The helper is root-owned in /Library/PrivilegedHelperTools; app updates retain
+this separate copy while the helper protocol remains compatible.

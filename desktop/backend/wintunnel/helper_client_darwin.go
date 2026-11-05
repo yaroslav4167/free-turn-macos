@@ -3,20 +3,18 @@
 package wintunnel
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/samosvalishe/free-turn-proxy/desktop/backend/vpnservice"
 
 	"github.com/samosvalishe/free-turn-proxy/mobile"
 )
@@ -28,9 +26,10 @@ type helperRequest struct {
 }
 
 type helperReply struct {
-	Error string `json:"error,omitempty"`
-	Dev4  string `json:"dev4,omitempty"`
-	Dev6  string `json:"dev6,omitempty"`
+	Protocol int    `json:"protocol,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Dev4     string `json:"dev4,omitempty"`
+	Dev6     string `json:"dev6,omitempty"`
 }
 
 type helperClient struct {
@@ -87,63 +86,50 @@ func (c *helperClient) call(req helperRequest) error {
 }
 
 func startHelper(params *mobile.TunnelParams) (*helperClient, int, string, string, error) {
-	workDir, err := os.MkdirTemp("/tmp", "freeturn-vpn-")
+	conn, err := dialPersistentHelper()
 	if err != nil {
 		return nil, -1, "", "", err
-	}
-	defer func() { _ = os.RemoveAll(workDir) }()
-	socketPath := filepath.Join(workDir, "helper.sock")
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
-	if err != nil {
-		return nil, -1, "", "", err
-	}
-	defer func() { _ = listener.Close() }()
-
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, -1, "", "", err
-	}
-	helper := filepath.Join(filepath.Dir(exe), "freeturn-vpn-helper")
-	if info, statErr := os.Stat(helper); statErr != nil || !info.Mode().IsRegular() {
-		return nil, -1, "", "", errors.New("bundled macOS VPN helper is missing; install the complete FreeTurn.app")
-	}
-	command := shellQuote(helper) + " --vpn-helper " + shellQuote(socketPath)
-	cmd := exec.Command("/usr/bin/osascript", "-e", "on run argv", "-e", "do shell script (item 1 of argv) with administrator privileges", "-e", "end run", command) //nolint:gosec,noctx
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if startErr := cmd.Start(); startErr != nil {
-		return nil, -1, "", "", fmt.Errorf("start macOS authorization: %w", startErr)
-	}
-	exited := make(chan struct{})
-	var waitErr error
-	go func() {
-		waitErr = cmd.Wait()
-		close(exited)
-	}()
-	type accepted struct {
-		conn *net.UnixConn
-		err  error
-	}
-	acceptCh := make(chan accepted, 1)
-	go func() {
-		c, e := listener.AcceptUnix()
-		acceptCh <- accepted{conn: c, err: e}
-	}()
-
-	var conn *net.UnixConn
-	select {
-	case a := <-acceptCh:
-		if a.err != nil {
-			return nil, -1, "", "", a.err
-		}
-		conn = a.conn
-	case <-exited:
-		return nil, -1, "", "", fmt.Errorf("VPN authorization failed: %v: %s", waitErr, stderr.String())
-	case <-time.After(2 * time.Minute):
-		_ = cmd.Process.Kill()
-		return nil, -1, "", "", errors.New("VPN authorization timed out")
 	}
 	return initializeHelper(conn, params)
+}
+
+func dialPersistentHelper() (*net.UnixConn, error) {
+	uid := os.Getuid()
+	if uid == 0 {
+		return nil, errors.New("run FreeTurn as a regular user")
+	}
+	if !vpnservice.Available(uid) {
+		if vpnservice.Installed(uid) {
+			// launchd may still be starting after boot. Never ask for authorization
+			// repeatedly when an installed service is disabled or unhealthy.
+			deadline := time.Now().Add(10 * time.Second)
+			for !vpnservice.Available(uid) && time.Now().Before(deadline) {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if !vpnservice.Available(uid) {
+				return nil, errors.New("VPN service is installed but unavailable; enable it in macOS Login Items or reinstall the VPN helper")
+			}
+		} else {
+			if err := vpnservice.Configure(false); err != nil {
+				return nil, err
+			}
+		}
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: vpnservice.SocketPath(uid), Net: "unix"})
+		if err == nil {
+			if err = requireRootPeer(conn); err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
+			return conn, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("VPN service did not start: %w", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func initializeHelper(conn *net.UnixConn, params *mobile.TunnelParams) (*helperClient, int, string, string, error) {
@@ -226,5 +212,3 @@ func requirePeerUID(conn *net.UnixConn, uid uint32) error {
 	}
 	return nil
 }
-
-func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }

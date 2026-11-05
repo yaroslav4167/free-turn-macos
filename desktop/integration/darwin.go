@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/samosvalishe/free-turn-proxy/desktop/backend/vpnservice"
 )
 
 const Supported = true
@@ -27,24 +29,10 @@ func bundlePath() (string, error) {
 	}
 	return root, nil
 }
-func InstalledPath() (string, error) { return os.Executable() }
-func VPNHelperAvailable() bool {
-	exe, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(filepath.Dir(exe), "freeturn-vpn-helper"))
-	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
-}
-func ConfigureVPNHelper(remove bool) error {
-	if remove {
-		return nil
-	}
-	if !VPNHelperAvailable() {
-		return errors.New("VPN helper is missing; install the complete FreeTurn.app")
-	}
-	return nil
-}
+func InstalledPath() (string, error)       { return os.Executable() }
+func VPNHelperAvailable() bool             { return vpnservice.Available(os.Getuid()) }
+func ConfigureVPNHelper(remove bool) error { return vpnservice.Configure(remove) }
+
 func Install() (string, error) {
 	return "", errors.New("copy FreeTurn.app to Applications using Finder")
 }

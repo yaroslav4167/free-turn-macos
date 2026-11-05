@@ -35,7 +35,7 @@ jobs:
       - name: Build signed app bundle
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: v0.2.0
+          RELEASE_TAG: v0.2.1
           UPDATE_REPOSITORY: ${{ github.repository }}
         run: sh packaging/macos/build-desktop.sh
       - name: Frontend regression checks
@@ -49,10 +49,16 @@ jobs:
         run: |
           go test -c ./desktop/backend/wintunnel -o "$RUNNER_TEMP/wintunnel-routing.test"
           sudo -n env FREETURN_PRIVILEGED_TESTS=1 "$RUNNER_TEMP/wintunnel-routing.test" -test.run '^TestMacPrivilegedScopedRouting$' -test.v -test.timeout 45s
+      - name: Exercise persistent VPN service on the isolated runner
+        run: |
+          go build -o "$RUNNER_TEMP/freeturn-vpn-helper" ./cmd/macos-vpn-helper
+          codesign --force --sign - --timestamp=none "$RUNNER_TEMP/freeturn-vpn-helper"
+          go test -c ./desktop/backend/wintunnel -o "$RUNNER_TEMP/wintunnel-service.test"
+          sudo -n env FREETURN_PRIVILEGED_TESTS=1 FREETURN_TEST_SERVICE_UID="$(id -u)" FREETURN_TEST_HELPER_BINARY="$RUNNER_TEMP/freeturn-vpn-helper" "$RUNNER_TEMP/wintunnel-service.test" -test.run '^TestMacPrivilegedPersistentService$' -test.v -test.timeout 90s
       - name: Validate packaged app with the updater
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: v0.2.0
+          RELEASE_TAG: v0.2.1
         run: |
           export FREETURN_TEST_MACOS_ARCHIVE="$PWD/dist/FreeTurn-macOS-${MACOS_ARCH}-${RELEASE_TAG}.zip"
           export FREETURN_TEST_MACOS_VERSION="$RELEASE_TAG"

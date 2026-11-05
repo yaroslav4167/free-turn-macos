@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -37,13 +36,6 @@ func TestMacDNSRejectsCommandsHostnamesAndScopedAddresses(t *testing.T) {
 	got, err := parseDNS("1.1.1.1, 2606:4700:4700::1111")
 	if err != nil || len(got) != 2 {
 		t.Fatalf("DNS: %v %v", got, err)
-	}
-}
-func TestMacAuthorizationCommandDoesNotInterpretPaths(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "File with 'quotes' and $(touch SHOULD_NOT_EXIST).app")
-	out, err := exec.Command("/bin/sh", "-c", "printf %s "+shellQuote(path)).Output()
-	if err != nil || string(out) != path {
-		t.Fatalf("quoting: %q %v", out, err)
 	}
 }
 func TestMacHelperAuthenticatesUnixSocketPeer(t *testing.T) {

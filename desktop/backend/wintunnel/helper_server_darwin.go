@@ -68,14 +68,29 @@ func readRequest(reader *bufio.Reader, req *helperRequest) error {
 	return json.Unmarshal(line, req)
 }
 func serveDarwinHelper(conn *net.UnixConn) error {
+	return serveDarwinHelperSession(conn, nil)
+}
+func serveDarwinHelperSession(conn *net.UnixConn, acquire func() (func(), error)) error {
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	reader := bufio.NewReaderSize(conn, 64*1024+1)
 	var request helperRequest
 	if err := readRequest(reader, &request); err != nil {
 		return err
 	}
+	if request.Op == "status" {
+		return json.NewEncoder(conn).Encode(helperReply{Protocol: helperProtocol})
+	}
 	if request.Op != "init" || request.Params == nil {
 		return errors.New("invalid VPN initialization")
+	}
+	if acquire != nil {
+		release, err := acquire()
+		if err != nil {
+			_, _, _ = conn.WriteMsgUnix([]byte{0}, nil, nil)
+			_ = json.NewEncoder(conn).Encode(helperReply{Error: err.Error()})
+			return err
+		}
+		defer release()
 	}
 	state, dev, err := prepareHelper(request.Params)
 	if err != nil {
