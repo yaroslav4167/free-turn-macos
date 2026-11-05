@@ -45,6 +45,10 @@ jobs:
           go test ./desktop/... ./internal/session ./mobile
           go test -race ./desktop/backend/... ./desktop/integration ./desktop/updates
           go vet ./desktop/... ./cmd/macos-vpn-helper
+      - name: Exercise Darwin routes on the isolated runner
+        run: |
+          go test -c ./desktop/backend/wintunnel -o "$RUNNER_TEMP/wintunnel-routing.test"
+          sudo -n env FREETURN_PRIVILEGED_TESTS=1 "$RUNNER_TEMP/wintunnel-routing.test" -test.run '^TestMacPrivilegedScopedRouting$' -test.v -test.timeout 45s
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: FreeTurn-macOS-${{ matrix.arch }}
