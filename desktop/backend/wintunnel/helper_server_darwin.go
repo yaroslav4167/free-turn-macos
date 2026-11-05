@@ -158,10 +158,25 @@ func command(path string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LC_ALL=C"}
 	out, err := cmd.CombinedOutput()
+	if err == nil && path == "/sbin/route" {
+		err = routeOutputError(string(out))
+	}
 	if err != nil {
 		return "", fmt.Errorf("%s %v: %w: %s", path, args, err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
+}
+
+// Darwin route(8) can report routing-socket errors while exiting with zero.
+// Never treat such a failed add as an owned route or a successful VPN setup.
+func routeOutputError(output string) error {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "route:") {
+			return errors.New(line)
+		}
+	}
+	return nil
 }
 
 // Keep the actual physical gateway before any VPN routes are added. A socket

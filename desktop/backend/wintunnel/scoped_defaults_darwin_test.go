@@ -112,3 +112,14 @@ func TestScopedPhysicalRouteFailureDoesNotInstallVPNRoutes(t *testing.T) {
 		t.Fatal("failed route claimed as owned")
 	}
 }
+
+func TestDarwinRouteSocketErrorIsNotSuccess(t *testing.T) {
+	for _, output := range []string{"route: writing to routing socket: not in table", "add net default: gateway 192.0.2.1\nroute: writing to routing socket: File exists"} {
+		if routeOutputError(output) == nil {
+			t.Fatalf("routing socket failure ignored: %s", output)
+		}
+	}
+	if err := routeOutputError("route to: 198.18.0.254\ninterface: en0"); err != nil {
+		t.Fatal(err)
+	}
+}
