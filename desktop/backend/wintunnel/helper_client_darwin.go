@@ -60,9 +60,8 @@ func newHelperClient(conn *net.UnixConn) *helperClient {
 }
 
 func (c *helperClient) Close() {
-	// EOF requests cleanup, while the read side stays open until the helper
-	// has restored routes/DNS and closed its endpoint. This also works when
-	// systemd, rather than pkexec, owns the helper process.
+	// EOF requests cleanup. Keep the read side open until the privileged
+	// helper has released its routes/DNS and closed the connection.
 	_ = c.conn.CloseWrite()
 	select {
 	case <-c.exited:
