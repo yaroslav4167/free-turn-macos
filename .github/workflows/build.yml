@@ -35,7 +35,7 @@ jobs:
       - name: Build signed app bundle
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: v0.2.1
+          RELEASE_TAG: v0.2.2
           UPDATE_REPOSITORY: ${{ github.repository }}
         run: sh packaging/macos/build-desktop.sh
       - name: Frontend regression checks
@@ -58,7 +58,7 @@ jobs:
       - name: Validate packaged app with the updater
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: v0.2.1
+          RELEASE_TAG: v0.2.2
         run: |
           export FREETURN_TEST_MACOS_ARCHIVE="$PWD/dist/FreeTurn-macOS-${MACOS_ARCH}-${RELEASE_TAG}.zip"
           export FREETURN_TEST_MACOS_VERSION="$RELEASE_TAG"

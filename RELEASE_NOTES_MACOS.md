@@ -1,11 +1,11 @@
-## v0.2.1 — one-time VPN authorization
+## v0.2.2 — fix VPN initialization timeouts and stale sessions
 
-- Install a persistent per-user launchd VPN helper on the first connection. Approve the administrator dialog once; subsequent VPN connections no longer invoke osascript or ask for the password, including after restarting the app or macOS.
-- Keep a root-owned system copy of the helper separate from the app. Compatible interface updates retain this copy without requiring administrator approval.
-- Restrict the local socket to the installing user, authenticate both peers, reject overlapping VPN sessions and release session resources on disconnect or shutdown.
-- Provide explicit helper repair and removal commands. Repair/removal requires administrator approval; no password is stored or sudo policy changed.
-- Test service installation, repeated non-root connections, launchd restart, removal and session cleanup on isolated Apple Silicon and Intel runners. Retain updater rollback and scoped-routing regression checks.
+- Allow slower macOS utun initialization: the client waits up to 60 seconds, while helper setup has a separate 45-second budget. The initial request read deadline no longer cancels valid setup after 15 seconds.
+- Detect client disconnect during initialization and cancel in-flight network commands. Cancel setup when the user disconnects, and release the session after resource cleanup so the next attempt is not blocked by an abandoned connection.
+- Limit route application and cleanup separately, preserving cleanup even when the original session context is cancelled.
+- Check the installed system helper protocol. Upgrade the older v0.2.1 helper once so replacing the app also activates the fix in the persistent service.
+- Add regression checks for setup lasting longer than 15 seconds, cancellation of preparation and commands, slot reuse, and real IPv4/dual-stack utun sessions on Apple Silicon and Intel.
 
-**From v0.2.0:** install this release from Settings > Download and install. **From v0.1.x:** quit FreeTurn and replace the entire FreeTurn.app manually. The next VPN connection asks once to install the persistent helper.
+**Update from Settings > Download and install.** On the next connection, approve the one-time system-helper upgrade. Subsequent connections reuse it without another password prompt. A manual service repair is not required.
 
 Requires macOS 13+. Choose `arm64` for Apple Silicon or `amd64` for Intel. Profiles and preferences are retained. Builds remain ad-hoc signed and are not Apple-notarized.

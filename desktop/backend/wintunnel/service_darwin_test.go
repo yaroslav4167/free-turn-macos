@@ -5,6 +5,7 @@ package wintunnel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	amtun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"github.com/samosvalishe/free-turn-proxy/desktop/backend/vpnservice"
 	"github.com/samosvalishe/free-turn-proxy/mobile"
 	"golang.org/x/sys/unix"
@@ -107,6 +109,110 @@ func TestMacServiceRejectsOtherUID(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestMacHelperClientDisconnectCancelsPreparationAndReleasesSlot(t *testing.T) {
+	listener, path := testServiceListener(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered, released := make(chan struct{}, 2), make(chan struct{}, 2)
+	done := make(chan error, 1)
+	completed := make(chan struct{}, 2)
+	prepare := func(ctx context.Context, _ *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+		entered <- struct{}{}
+		<-ctx.Done()
+		released <- struct{}{}
+		return nil, nil, ctx.Err()
+	}
+	go func() {
+		done <- serveHelperListener(ctx, listener, uint32(os.Getuid()), func(conn *net.UnixConn, acquire func() (func(), error)) error {
+			err := serveDarwinHelperSessionWithPrepare(conn, acquire, prepare)
+			completed <- struct{}{}
+			return err
+		})
+	}()
+	for i := 0; i < 2; i++ {
+		conn := testServiceDial(t, path)
+		if err := json.NewEncoder(conn).Encode(helperRequest{Op: "init", Params: &mobile.TunnelParams{MTU: 1280}}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("preparation blocked by stale VPN session")
+		}
+		conn.Close()
+		select {
+		case <-released:
+		case <-time.After(time.Second):
+			t.Fatal("client EOF did not cancel preparation")
+		}
+		select {
+		case <-completed:
+		case <-time.After(time.Second):
+			t.Fatal("cancelled session retained its slot")
+		}
+
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("service failed to stop")
+	}
+}
+
+func TestMacHelperInitializationOutlivesRequestReadTimeout(t *testing.T) {
+	listener, path := testServiceListener(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- serveHelperListener(ctx, listener, uint32(os.Getuid()), func(conn *net.UnixConn, acquire func() (func(), error)) error {
+			return serveDarwinHelperSessionWithPrepare(conn, acquire, func(ctx context.Context, _ *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+				select {
+				case <-time.After(16 * time.Second):
+					return nil, nil, errors.New("slow initialization completed")
+				case <-ctx.Done():
+					return nil, nil, ctx.Err()
+				}
+			})
+		})
+	}()
+	conn := testServiceDial(t, path)
+	_ = conn.SetDeadline(time.Now().Add(25 * time.Second))
+	if err := json.NewEncoder(conn).Encode(helperRequest{Op: "init", Params: &mobile.TunnelParams{MTU: 1280}}); err != nil {
+		t.Fatal(err)
+	}
+	var marker [1]byte
+	if _, err := io.ReadFull(conn, marker[:]); err != nil {
+		t.Fatalf("setup cancelled by obsolete 15-second read deadline: %v", err)
+	}
+	var reply helperReply
+	if err := json.NewDecoder(conn).Decode(&reply); err != nil || reply.Error != "slow initialization completed" {
+		t.Fatalf("slow setup: %+v %v", reply, err)
+	}
+	conn.Close()
+	cancel()
+	<-done
+}
+
+func TestMacHelperCommandCancellationStopsInFlightCommand(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := commandContext(ctx, "/bin/sleep", "30"); done <- err }()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancellation cause lost: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("helper command survived session cancellation")
+	}
+}
 func TestMacServiceDisconnectAndShutdownReleaseSessions(t *testing.T) {
 	listener, path := testServiceListener(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -183,8 +289,8 @@ func TestMacServiceUnprivilegedProbe(t *testing.T) {
 			t.Fatalf("root helper status: %+v %v", reply, err)
 		}
 	}
-	for i := 0; i < 2; i++ {
-		params := &mobile.TunnelParams{MTU: 1280, Addresses: "198.19.255.1/32"}
+	for _, address := range []string{"198.19.255.1/32", "198.19.255.1/32,fd00:ff::1/128", "198.19.255.1/32"} {
+		params := &mobile.TunnelParams{MTU: 1280, Addresses: address}
 		client, fd, _, _, err := startHelper(params)
 		if err != nil {
 			t.Fatal(err)
@@ -251,4 +357,52 @@ func TestMacPrivilegedPersistentService(t *testing.T) {
 		t.Fatal("service access retained after removal")
 	}
 	t.Log(fmt.Sprintf("UID %d: install, repeated unprivileged sessions, restart and removal passed", uid))
+}
+
+func TestMacHelperProtocolUpgradeIsRequestedOnlyForOldService(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		version  int
+		deny     bool
+		upgrades int
+	}{
+		{"compatible", helperProtocol, false, 0}, {"newer", helperProtocol + 1, false, 0}, {"old", helperProtocol - 1, false, 1}, {"authorization declined", helperProtocol - 1, true, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			version, calls := tc.version, 0
+			denied := errors.New("authorization declined")
+			probe := func() (int, error) { return version, nil }
+			upgrade := func() error {
+				calls++
+				if tc.deny {
+					return denied
+				}
+				version = helperProtocol
+				return nil
+			}
+			err := requireHelperProtocol(probe, upgrade)
+			if tc.deny {
+				if !errors.Is(err, denied) {
+					t.Fatalf("lost authorization cancellation: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = requireHelperProtocol(probe, upgrade); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if calls != tc.upgrades {
+				t.Fatalf("authorization requests=%d, expected %d", calls, tc.upgrades)
+			}
+		})
+	}
+}
+func TestMacCancelledHelperStartDoesNotInstallService(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, _, _, err := startHelperContext(ctx, &mobile.TunnelParams{MTU: 1280}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled setup continued: %v", err)
+	}
 }

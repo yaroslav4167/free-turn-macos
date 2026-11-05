@@ -31,3 +31,7 @@ This requests administrator authorization once. Then quit and trash the app.
 To repair or explicitly upgrade the system helper, use --configure-vpn-helper.
 The helper is root-owned in /Library/PrivilegedHelperTools; app updates retain
 this separate copy while the helper protocol remains compatible.
+
+v0.2.2 upgrades the v0.2.1 system helper once, with administrator approval.
+This fixes setup timeouts and stale active sessions after a cancelled attempt.
+Later connections reuse the installed helper without another password prompt.

@@ -3,6 +3,7 @@
 package wintunnel
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -19,6 +20,7 @@ const DefaultMTU = 1280
 var mu sync.Mutex
 var active *helperClient
 var connecting bool
+var connectCancel context.CancelFunc
 var generation uint64
 
 func Available() bool { return true }
@@ -52,9 +54,11 @@ func ConnectWithRoutes(configJSON, wgConfigText string, mtu int, routes string, 
 		return errors.New("macOS VPN is already connecting or active")
 	}
 	connecting = true
+	ctx, cancel := context.WithCancel(context.Background())
+	connectCancel = cancel
 	current := generation
 	mu.Unlock()
-	defer func() { mu.Lock(); connecting = false; mu.Unlock() }()
+	defer func() { mu.Lock(); connecting = false; connectCancel = nil; mu.Unlock(); cancel() }()
 	if mtu <= 0 {
 		mtu = DefaultMTU
 	}
@@ -65,7 +69,7 @@ func ConnectWithRoutes(configJSON, wgConfigText string, mtu int, routes string, 
 	if routes != "" {
 		params.AllowedIPs = routes
 	}
-	client, fd, dev4, dev6, err := startHelper(params)
+	client, fd, dev4, dev6, err := startHelperContext(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -127,7 +131,11 @@ func Disconnect() {
 	generation++
 	client := active
 	active = nil
+	cancel := connectCancel
 	mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	mobile.Stop()
 	mobile.SetProtect(nil)
 	if client != nil {

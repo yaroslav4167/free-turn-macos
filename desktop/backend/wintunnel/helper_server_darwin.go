@@ -23,6 +23,7 @@ import (
 )
 
 type helperState struct {
+	ctx                  context.Context
 	name, dev4, dev6     string
 	physical4, physical6 physicalNetworkRoute
 	run                  func(string, ...string) (string, error)
@@ -71,6 +72,9 @@ func serveDarwinHelper(conn *net.UnixConn) error {
 	return serveDarwinHelperSession(conn, nil)
 }
 func serveDarwinHelperSession(conn *net.UnixConn, acquire func() (func(), error)) error {
+	return serveDarwinHelperSessionWithPrepare(conn, acquire, prepareHelperContext)
+}
+func serveDarwinHelperSessionWithPrepare(conn *net.UnixConn, acquire func() (func(), error), prepare func(context.Context, *mobile.TunnelParams) (*helperState, amtun.Device, error)) error {
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	reader := bufio.NewReaderSize(conn, 64*1024+1)
 	var request helperRequest
@@ -92,7 +96,13 @@ func serveDarwinHelperSession(conn *net.UnixConn, acquire func() (func(), error)
 		}
 		defer release()
 	}
-	state, dev, err := prepareHelper(request.Params)
+	_ = conn.SetReadDeadline(time.Time{})
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); _ = conn.Close() }()
+	requests := readSessionRequests(sessionCtx, cancel, reader)
+	initCtx, stopInit := context.WithTimeout(sessionCtx, 45*time.Second)
+	state, dev, err := prepare(initCtx, request.Params)
+	stopInit()
 	if err != nil {
 		_, _, _ = conn.WriteMsgUnix([]byte{0}, nil, nil)
 		_ = json.NewEncoder(conn).Encode(helperReply{Error: err.Error()})
@@ -109,17 +119,18 @@ func serveDarwinHelperSession(conn *net.UnixConn, acquire func() (func(), error)
 		return err
 	}
 	_ = conn.SetReadDeadline(time.Time{})
-	for {
-		var req helperRequest
-		if err := readRequest(reader, &req); err != nil {
-			return nil
-		}
+	state.ctx = sessionCtx
+	for req := range requests {
 		var opErr error
 		if req.Op != "routes" || state.applied || req.Params == nil || *req.Params != *request.Params {
 			opErr = errors.New("invalid or duplicate VPN route request")
 		} else {
 			state.applied = true
+			routeCtx, stopRoutes := context.WithTimeout(sessionCtx, 45*time.Second)
+			state.ctx = routeCtx
 			opErr = state.installRoutes(req.Params)
+			stopRoutes()
+			state.ctx = sessionCtx
 		}
 		reply := helperReply{}
 		if opErr != nil {
@@ -132,6 +143,29 @@ func serveDarwinHelperSession(conn *net.UnixConn, acquire func() (func(), error)
 			return opErr
 		}
 	}
+	return nil
+}
+
+// A single reader owns the buffered stream. EOF cancels in-flight initialization
+// and route commands even while the serving goroutine is busy preparing utun.
+func readSessionRequests(ctx context.Context, cancel context.CancelFunc, reader *bufio.Reader) <-chan helperRequest {
+	requests := make(chan helperRequest, 1)
+	go func() {
+		defer close(requests)
+		defer cancel()
+		for {
+			var req helperRequest
+			if err := readRequest(reader, &req); err != nil {
+				return
+			}
+			select {
+			case requests <- req:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return requests
 }
 func parsePrefixes(value string) ([]netip.Prefix, error) {
 	var result []netip.Prefix
@@ -168,15 +202,23 @@ func parseDNS(value string) ([]string, error) {
 	return result, nil
 }
 func command(path string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	return commandContext(context.Background(), path, args...)
+}
+func commandContext(parent context.Context, path string, args ...string) (string, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.WaitDelay = time.Second
 	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LC_ALL=C"}
 	out, err := cmd.CombinedOutput()
 	if err == nil && path == "/sbin/route" {
 		err = routeOutputError(string(out))
 	}
 	if err != nil {
+		err = errors.Join(err, ctx.Err())
 		return "", fmt.Errorf("%s %v: %w: %s", path, args, err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
@@ -235,11 +277,14 @@ func parsePhysicalNetworkRoute(output string, ipv6 bool) (physicalNetworkRoute, 
 	return result, nil
 }
 func discoverPhysicalNetworkRoute(ipv6 bool) (physicalNetworkRoute, error) {
+	return discoverPhysicalNetworkRouteContext(context.Background(), ipv6)
+}
+func discoverPhysicalNetworkRouteContext(ctx context.Context, ipv6 bool) (physicalNetworkRoute, error) {
 	family, destination := "-inet", "1.1.1.1"
 	if ipv6 {
 		family, destination = "-inet6", "2606:4700:4700::1111"
 	}
-	out, err := command("/sbin/route", "-n", "get", family, destination)
+	out, err := commandContext(ctx, "/sbin/route", "-n", "get", family, destination)
 	if err != nil {
 		return physicalNetworkRoute{}, err
 	}
@@ -291,7 +336,7 @@ func (s *helperState) runCommand(path string, args ...string) (string, error) {
 	if s.run != nil {
 		return s.run(path, args...)
 	}
-	return command(path, args...)
+	return commandContext(s.ctx, path, args...)
 }
 func (s *helperState) ensurePhysicalDefault(r physicalNetworkRoute) error {
 	if r.device == "" {
@@ -313,11 +358,14 @@ func (s *helperState) ensurePhysicalDefault(r physicalNetworkRoute) error {
 	return nil
 }
 func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+	return prepareHelperContext(context.Background(), params)
+}
+func prepareHelperContext(ctx context.Context, params *mobile.TunnelParams) (*helperState, amtun.Device, error) {
 	if params == nil || params.MTU < 576 || params.MTU > 9000 {
 		return nil, nil, errors.New("invalid tunnel MTU")
 	}
 	addresses, err := parsePrefixes(params.Addresses)
-	if err != nil || len(addresses) == 0 {
+	if err != nil || len(addresses) == 0 || len(addresses) > 16 {
 		return nil, nil, errors.New("VPN interface address is missing or invalid")
 	}
 	if _, err := parsePrefixes(params.AllowedIPs); err != nil {
@@ -326,21 +374,28 @@ func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, err
 	if _, err := parseDNS(params.DNS); err != nil {
 		return nil, nil, err
 	}
-	physical4, err := discoverPhysicalNetworkRoute(false)
+	physical4, err := discoverPhysicalNetworkRouteContext(ctx, false)
 	if err != nil {
 		return nil, nil, err
 	}
-	physical6, _ := discoverPhysicalNetworkRoute(true)
+	physical6, _ := discoverPhysicalNetworkRouteContext(ctx, true)
+	if err := ctx.Err(); err != nil {
+		return nil, nil, fmt.Errorf("discover physical network: %w", err)
+	}
 	dev, err := amtun.CreateTUN("utun", params.MTU)
 	if err != nil {
 		return nil, nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		_ = dev.Close()
+		return nil, nil, fmt.Errorf("create utun: %w", err)
 	}
 	name, err := dev.Name()
 	if err != nil {
 		_ = dev.Close()
 		return nil, nil, err
 	}
-	state := &helperState{name: name, dev4: physical4.device, dev6: physical6.device, physical4: physical4, physical6: physical6}
+	state := &helperState{ctx: ctx, name: name, dev4: physical4.device, dev6: physical6.device, physical4: physical4, physical6: physical6}
 	for _, address := range addresses {
 		var args []string
 		if address.Addr().Is4() {
@@ -348,12 +403,12 @@ func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, err
 		} else {
 			args = []string{name, "inet6", address.String(), "alias"}
 		}
-		if _, err = command("/sbin/ifconfig", args...); err != nil {
+		if _, err = commandContext(ctx, "/sbin/ifconfig", args...); err != nil {
 			_ = dev.Close()
 			return nil, nil, err
 		}
 	}
-	if _, err = command("/sbin/ifconfig", name, "up"); err != nil {
+	if _, err = commandContext(ctx, "/sbin/ifconfig", name, "up"); err != nil {
 		_ = dev.Close()
 		return nil, nil, err
 	}
@@ -423,6 +478,9 @@ func (s *helperState) installRoutes(params *mobile.TunnelParams) error {
 	return nil
 }
 func (s *helperState) cleanup() {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	s.ctx = cleanupCtx
 	if s.dns != 0 {
 		removeSessionDNS(s.dns)
 		s.dns = 0

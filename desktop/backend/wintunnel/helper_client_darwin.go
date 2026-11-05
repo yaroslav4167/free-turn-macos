@@ -3,6 +3,7 @@
 package wintunnel
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,10 +87,18 @@ func (c *helperClient) call(req helperRequest) error {
 }
 
 func startHelper(params *mobile.TunnelParams) (*helperClient, int, string, string, error) {
+	return startHelperContext(context.Background(), params)
+}
+func startHelperContext(ctx context.Context, params *mobile.TunnelParams) (*helperClient, int, string, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, -1, "", "", err
+	}
 	conn, err := dialPersistentHelper()
 	if err != nil {
 		return nil, -1, "", "", err
 	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	return initializeHelper(conn, params)
 }
 
@@ -115,6 +124,51 @@ func dialPersistentHelper() (*net.UnixConn, error) {
 			}
 		}
 	}
+	// Older installed helpers keep running across app updates. Upgrade the
+	// system copy once when cancellation/initialization support is missing.
+	if err := requireHelperProtocol(func() (int, error) { return installedHelperProtocol(uid) }, func() error { return vpnservice.Configure(false) }); err != nil {
+		return nil, err
+	}
+	return dialHelperSocket(uid)
+}
+func requireHelperProtocol(probe func() (int, error), upgrade func() error) error {
+	protocol, err := probe()
+	if err != nil {
+		return err
+	}
+	if protocol >= helperProtocol {
+		return nil
+	}
+	if err = upgrade(); err != nil {
+		return err
+	}
+	protocol, err = probe()
+	if err != nil {
+		return err
+	}
+	if protocol < helperProtocol {
+		return errors.New("installed VPN helper requires an upgrade")
+	}
+	return nil
+}
+
+func installedHelperProtocol(uid int) (int, error) {
+	conn, err := dialHelperSocket(uid)
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if err = json.NewEncoder(conn).Encode(helperRequest{Op: "status"}); err != nil {
+		return 0, err
+	}
+	var reply helperReply
+	if err = json.NewDecoder(io.LimitReader(conn, 4096)).Decode(&reply); err != nil {
+		return 0, fmt.Errorf("VPN helper status: %w", err)
+	}
+	return reply.Protocol, nil
+}
+func dialHelperSocket(uid int) (*net.UnixConn, error) {
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: vpnservice.SocketPath(uid), Net: "unix"})
@@ -133,7 +187,7 @@ func dialPersistentHelper() (*net.UnixConn, error) {
 }
 
 func initializeHelper(conn *net.UnixConn, params *mobile.TunnelParams) (*helperClient, int, string, string, error) {
-	if err := conn.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(60 * time.Second)); err != nil {
 		_ = conn.Close()
 		return nil, -1, "", "", err
 	}
