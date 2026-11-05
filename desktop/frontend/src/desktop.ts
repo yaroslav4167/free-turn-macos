@@ -9,6 +9,7 @@ export interface DesktopSettings {
   autoConnectError: string
   autoCheckUpdates: boolean
   renderingNote: string
+  canInstallUpdates: boolean
   supported: boolean
   trayAvailable: boolean
   trayError: string

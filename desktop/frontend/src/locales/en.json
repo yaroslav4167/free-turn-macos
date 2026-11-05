@@ -308,6 +308,10 @@
     "Нажмите уведомление или «Открыть в браузере», чтобы пройти проверку.": "Click this notification or ‘Open in browser’ to complete verification.",
     "Откройте FreeTurn и нажмите «Открыть проверку в браузере».": "Open FreeTurn and click ‘Open verification in browser’.",
     "Открыть проверку": "Open verification",
-    "Открыть в браузере": "Open in browser"
+    "Открыть в браузере": "Open in browser",
+    "При входе в macOS. Автоподключение настраивается отдельно ниже.": "When signing in to macOS. Automatic connection is configured separately below.",
+    "Системный трей недоступен. Пока трей недоступен, закрытие окна завершает приложение и VPN.": "System tray unavailable. Without a tray, closing the window exits the app and disconnects the VPN.",
+    "FreeTurn для macOS": "FreeTurn for macOS",
+    "После скачивания закройте FreeTurn и замените приложение в папке «Программы».": "After downloading, quit FreeTurn and replace the app in Applications."
   }
 }

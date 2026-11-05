@@ -1,5 +1,4 @@
-name: Release Linux client
-
+name: Release macOS client
 on:
   push:
     tags: ['v*.*.*']
@@ -8,76 +7,67 @@ on:
       tag:
         description: Existing release tag
         required: true
-
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  build-linux:
-    # Build against older glibc so the archive also runs on Debian 12 and Arch.
-    runs-on: ubuntu-22.04
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6.0.2
         with:
-          fetch-depth: 0
           ref: ${{ inputs.tag || github.ref }}
-
       - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-          cache: true
-
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
-
-      - name: Install Wails build libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-
-      - name: Install frontend dependencies
-        run: npm --prefix desktop/frontend ci
-
-      - name: Build desktop client
-        working-directory: desktop
+      - name: Build macOS release
         env:
+          MACOS_ARCH: ${{ matrix.arch }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           UPDATE_REPOSITORY: ${{ github.repository }}
-        run: $(go env GOPATH)/bin/wails build -tags webkit2_41 -ldflags "-checklinkname=0 -s -w -X main.desktopVersion=${RELEASE_TAG} -X main.updateRepository=${UPDATE_REPOSITORY}" -trimpath
-
-      - name: Package Linux release
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: sh packaging/macos/build-desktop.sh
+      - name: Test packaged source
         run: |
-          mkdir -p dist/package
-          cp desktop/build/bin/freeturn-desktop dist/package/
-          cp desktop/build/bin/freeturn-vpn-helper dist/package/
-          cp README.md LICENSE dist/package/
-          cp packaging/linux/freeturn.desktop dist/package/
-          cp desktop/assets/icon.svg dist/package/freeturn.svg
-          mkdir -p dist/package/desktop/assets dist/package/docs
-          cp desktop/assets/icon.svg dist/package/desktop/assets/
-          cp -R docs/screenshots dist/package/docs/
-          cp docs/localization.md dist/package/docs/
-          cp packaging/linux/install-desktop.sh dist/package/
-          cp packaging/linux/uninstall-desktop.sh dist/package/
-          chmod +x dist/package/install-desktop.sh dist/package/uninstall-desktop.sh
-          go build -ldflags "-checklinkname=0 -s -w -X main.version=${RELEASE_TAG}" -trimpath -o dist/package/client ./cmd/client
-          go build -ldflags "-checklinkname=0 -s -w -X main.version=${RELEASE_TAG}" -trimpath -o dist/package/server ./cmd/server
-          tar -C dist/package -czf "dist/FreeTurn-Linux-amd64-${RELEASE_TAG}.tar.gz" .
-          cd dist
-          sha256sum "FreeTurn-Linux-amd64-${RELEASE_TAG}.tar.gz" > checksums.txt
-
+          npm --prefix desktop/frontend test
+          go test ./desktop/... ./internal/session ./mobile
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-${{ matrix.arch }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Collect checksums
+        run: cat dist/*.sha256 > dist/checksums.txt
       - uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          name: FreeTurn Linux ${{ inputs.tag || github.ref_name }}
+          name: FreeTurn macOS ${{ inputs.tag || github.ref_name }}
+          body_path: RELEASE_NOTES_MACOS.md
           files: |
-            dist/*.tar.gz
+            dist/*.zip
             dist/checksums.txt
-          generate_release_notes: true

@@ -60,6 +60,7 @@ type release struct {
 type Manager struct {
 	mu              sync.Mutex
 	state           State
+	platform        string
 	arch            string
 	client          *http.Client
 	apiURL          string
@@ -173,7 +174,7 @@ func (m *Manager) Check(ctx context.Context) (err error) {
 		return errors.New("релиз не является стабильной версией")
 	}
 	var archive, checksum asset
-	expected := "FreeTurn-Linux-" + m.arch + "-" + latest.Tag + ".tar.gz"
+	expected := m.archiveName(latest.Tag)
 	for _, a := range latest.Assets {
 		if a.Name == expected {
 			archive = a
@@ -298,7 +299,7 @@ func (m *Manager) get(ctx context.Context, address string) (io.ReadCloser, error
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "FreeTurn-Linux-updater")
+	req.Header.Set("User-Agent", "FreeTurn-Desktop-updater")
 	req.Header.Set("Accept", "application/vnd.github+json")
 	response, err := m.client.Do(req)
 	if err != nil {
@@ -390,4 +391,17 @@ func newer(latest, current string) bool {
 		}
 	}
 	return false
+}
+
+// NewForPlatform selects native archive naming without changing legacy Linux callers.
+func NewForPlatform(version, arch, repository, platform string) *Manager {
+	m := New(version, arch, repository)
+	m.platform = platform
+	return m
+}
+func (m *Manager) archiveName(version string) string {
+	if m.platform == "darwin" {
+		return "FreeTurn-macOS-" + m.arch + "-" + version + ".zip"
+	}
+	return "FreeTurn-Linux-" + m.arch + "-" + version + ".tar.gz"
 }

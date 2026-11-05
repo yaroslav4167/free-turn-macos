@@ -12,9 +12,11 @@ import (
 	"github.com/samosvalishe/free-turn-proxy/desktop/integration"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
 //go:embed all:frontend/dist
@@ -92,7 +94,9 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:             "FreeTurn Desktop",
+		Title:             "FreeTurn",
+		Menu:              applicationMenu(),
+		Mac:               &mac.Options{About: &mac.AboutInfo{Title: "FreeTurn", Message: "FreeTurn for macOS", Icon: appassets.IconPNG}},
 		Width:             900,
 		Height:            600,
 		MinWidth:          900,
@@ -123,4 +127,11 @@ func main() {
 	if err != nil {
 		println("Error:", err.Error())
 	}
+}
+
+func applicationMenu() *menu.Menu {
+	result := menu.NewMenu()
+	result.Append(menu.AppMenu())
+	result.Append(menu.EditMenu())
+	return result
 }

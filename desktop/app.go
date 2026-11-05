@@ -67,7 +67,7 @@ func NewApp() *App {
 	locale.Set(language)
 	return &App{
 		store: store, engine: backend.NewEngine(store), preferences: prefs,
-		updater:      updates.New(desktopVersion, runtime.GOARCH, updateRepository),
+		updater:      updates.NewForPlatform(desktopVersion, runtime.GOARCH, updateRepository, runtime.GOOS),
 		updateResult: integration.LoadUpdateResult(),
 	}
 }

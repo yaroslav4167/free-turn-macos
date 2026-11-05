@@ -19,6 +19,8 @@ import (
 	"github.com/samosvalishe/free-turn-proxy/desktop/backend/vpnservice"
 )
 
+const CanInstallUpdates = Supported
+
 const Supported = true
 
 func dataDir() (string, error) {

@@ -72,7 +72,7 @@ func (a *App) DownloadUpdate() error {
 	}
 	destination, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
 		Title: locale.Text("Сохранить обновление FreeTurn", "Save FreeTurn update"), DefaultFilename: state.AssetName,
-		Filters: []wailsruntime.FileFilter{{DisplayName: locale.Text("Архив Linux (*.tar.gz)", "Linux archive (*.tar.gz)"), Pattern: "*.tar.gz"}},
+		Filters: []wailsruntime.FileFilter{{DisplayName: locale.Text("Архив обновления", "Update archive"), Pattern: "*.tar.gz;*.zip"}},
 	})
 	if err != nil || destination == "" {
 		return err
@@ -81,8 +81,8 @@ func (a *App) DownloadUpdate() error {
 }
 
 func (a *App) InstallUpdate() error {
-	if !integration.Supported {
-		return errors.New("установка обновлений поддерживается только на Linux")
+	if !integration.CanInstallUpdates {
+		return errors.New("скачайте обновление и замените FreeTurn.app через Finder")
 	}
 	if os.Geteuid() == 0 {
 		return errors.New("обновление клиента нельзя запускать от root")

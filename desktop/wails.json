@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "freeturn-desktop",
+  "name": "FreeTurn",
   "outputfilename": "freeturn-desktop",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
@@ -8,5 +8,12 @@
   "frontend:dev:serverUrl": "auto",
   "postBuildHooks": {
     "linux/*": "sh ../../../packaging/linux/build-vpn-helper.sh ${platform} ${bin}"
+  },
+  "info": {
+    "companyName": "FreeTurn",
+    "productName": "FreeTurn",
+    "productVersion": "0.1.0",
+    "copyright": "FreeTurn contributors",
+    "comments": "FreeTurn desktop VPN for macOS"
   }
 }

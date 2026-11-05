@@ -40,7 +40,7 @@ export default function Navigation({
         ))}
       </nav>
       <div className="nav-footer" title={`FreeTurn Core ${version || '…'}`}>
-        <small>LINUX</small>
+        <small>macOS</small>
       </div>
     </aside>
   )

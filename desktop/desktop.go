@@ -23,6 +23,7 @@ type DesktopSettings struct {
 	AutoConnectError    string `json:"autoConnectError"`
 	AutoCheckUpdates    bool   `json:"autoCheckUpdates"`
 	RenderingNote       string `json:"renderingNote"`
+	CanInstallUpdates   bool   `json:"canInstallUpdates"`
 	Supported           bool   `json:"supported"`
 	TrayAvailable       bool   `json:"trayAvailable"`
 	TrayError           string `json:"trayError"`
@@ -92,10 +93,11 @@ func (a *App) DesktopSettings() (DesktopSettings, error) {
 		Language: a.preferences.Language, SystemLanguage: integration.SystemLanguage(),
 		CloseToTray: a.preferences.CloseToTray, Autostart: autostart,
 		AutoConnect: a.preferences.AutoConnect, AutoConnectServerID: a.preferences.AutoConnectServerID,
-		AutoConnectError: a.autoConnectError,
-		AutoCheckUpdates: a.preferences.AutoCheckUpdates,
-		RenderingNote:    a.renderingNote,
-		Supported:        integration.Supported, TrayAvailable: a.tray != nil && a.tray.Available(),
+		AutoConnectError:  a.autoConnectError,
+		AutoCheckUpdates:  a.preferences.AutoCheckUpdates,
+		RenderingNote:     a.renderingNote,
+		CanInstallUpdates: integration.CanInstallUpdates,
+		Supported:         integration.Supported, TrayAvailable: a.tray != nil && a.tray.Available(),
 		TrayError: a.trayError, InstalledPath: path,
 		VPNHelperAvailable: integration.VPNHelperAvailable(),
 	}, nil
@@ -164,7 +166,7 @@ func (a *App) MinimiseToTray() error {
 	a.desktopMu.Lock()
 	defer a.desktopMu.Unlock()
 	if a.tray == nil || !a.tray.Available() {
-		return errors.New("системный трей недоступен; в GNOME установите расширение AppIndicator")
+		return errors.New("системный трей недоступен")
 	}
 	wailsruntime.WindowHide(a.ctx)
 	return nil

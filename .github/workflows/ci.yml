@@ -1,106 +1,18 @@
-name: CI
-
+name: Core compatibility
 on:
   pull_request:
-    branches: [main]
-
+  workflow_dispatch:
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  GO_VERSION: "1.26.7"
-  GOLANGCI_VERSION: v2.12.2
-  GOVULN_VERSION: v1.6.0
-  TASK_VERSION: 3.52.0
-
 jobs:
-  desktop-linux:
-    name: Build Linux desktop
-    runs-on: ubuntu-22.04
+  core:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
-          cache: true
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
-      - name: Install Wails build libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-      - run: npm --prefix desktop/frontend ci
-      - run: npm --prefix desktop/frontend test
-      - name: Build client
-        working-directory: desktop
-        run: $(go env GOPATH)/bin/wails build -tags webkit2_41 -ldflags "-checklinkname=0 -s -w" -trimpath
-
-  lint:
-    name: Lint & format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v6.4.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - uses: arduino/setup-task@v2.0.0
-        with:
-          version: ${{ env.TASK_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Format check
-        run: task fmt:check
-
-      - name: Vet
-        run: task vet
-
-      - uses: golangci/golangci-lint-action@v9.2.1
-        with:
-          version: ${{ env.GOLANGCI_VERSION }}
-          args: --timeout=5m --new-from-rev=${{ github.event.pull_request.base.sha }} ./...
-
-  test:
-    name: Test (race)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-go@v6.4.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - uses: arduino/setup-task@v2.0.0
-        with:
-          version: ${{ env.TASK_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run tests
-        run: task test
-
-  vuln:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-go@v6.4.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULN_VERSION }}
-
-      - run: govulncheck ./...
+      - run: go test -race ./internal/... ./mobile

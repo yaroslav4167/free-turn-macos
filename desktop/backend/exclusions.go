@@ -16,7 +16,7 @@ import (
 // impossible on networks where that direct path is blocked. Leave ordinary
 // sockets (including SSH) on the user's profile/split-tunnel routes instead.
 func routeExclusions(platform string, resolved []string) []string {
-	if platform == "linux" {
+	if platform == "linux" || platform == "darwin" {
 		return nil
 	}
 	return resolved

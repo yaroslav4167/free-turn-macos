@@ -24,6 +24,7 @@ func TestNormalizeVKLinksAtSaveBoundary(t *testing.T) {
 }
 
 func TestSavedVKLinksExcludeEditingBlankLines(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store, err := NewStore()
 	if err != nil {

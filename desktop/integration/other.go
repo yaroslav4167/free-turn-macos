@@ -1,8 +1,10 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package integration
 
 import "errors"
+
+const CanInstallUpdates = Supported
 
 const Supported = false
 

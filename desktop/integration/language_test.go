@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"github.com/samosvalishe/free-turn-proxy/desktop/locale"
 	"os"
 	"testing"
 )
@@ -16,13 +17,18 @@ func TestSystemLanguagePrecedenceAndFallback(t *testing.T) {
 		t.Setenv("LC_ALL", test.all)
 		t.Setenv("LC_MESSAGES", test.messages)
 		t.Setenv("LANG", test.lang)
-		if got := SystemLanguage(); got != test.want {
+		want := test.want
+		if test.all == "" && test.messages == "" && test.lang == "" {
+			want = locale.MatchSystemLanguage(nativeSystemLanguage())
+		}
+		if got := SystemLanguage(); got != want {
 			t.Fatalf("%+v: got %q", test, got)
 		}
 	}
 }
 
 func TestLanguagePreferenceMigrationAndPersistence(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	prefs, err := LoadPreferences()
 	if err != nil || prefs.Language != "system" {

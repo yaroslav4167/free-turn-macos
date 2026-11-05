@@ -115,8 +115,8 @@ export default function UpdatePreferences({active, autoCheck, onAutoCheck, disab
         <button className="btn" disabled={busy || !state?.repository} onClick={() => run('checking', () => desktop().CheckForUpdates())}>
           {state?.busy === 'checking' ? tr('Проверка…', 'Checking…') : tr('Проверить обновления', 'Check for updates')}
         </button>
-        {state?.available && (
-          <button className="btn primary" disabled={busy || !canInstall} onClick={() => run('installing', () => desktop().InstallUpdate())}>
+        {state?.available && canInstall && (
+          <button className="btn primary" disabled={busy} onClick={() => run('installing', () => desktop().InstallUpdate())}>
             {pending === 'installing' || state.busy === 'preparing' || state.busy === 'restarting' ? tr('Подготовка обновления…', 'Preparing update…') : tr('Скачать и установить', 'Download and install')}
           </button>
         )}
@@ -143,6 +143,7 @@ export default function UpdatePreferences({active, autoCheck, onAutoCheck, disab
           <p className="settings-note">{progress.detail}</p>
         </section>
       )}
+      {!canInstall && <p className="settings-note">{tr('После скачивания закройте FreeTurn и замените приложение в папке «Программы».', 'After downloading, quit FreeTurn and replace the app in Applications.')}</p>}
       {state?.downloadedPath && !busy && (
         <div className="notice info" role="status">
           {tr('Архив проверен по SHA-256 и сохранён:', 'Archive verified with SHA-256 and saved:')} <span className="mono update-path">{state.downloadedPath}</span>

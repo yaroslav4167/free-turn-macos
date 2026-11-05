@@ -1,0 +1,21 @@
+FreeTurn for macOS 13+ (Apple Silicon / Intel)
+
+1. Unzip the download and drag FreeTurn.app to Applications.
+2. Open the application using Finder. Initial builds are ad-hoc signed and are
+   not notarized by Apple. macOS may require explicit approval in
+   System Settings > Privacy & Security > Open Anyway after an attempted launch.
+   Do not disable Gatekeeper globally.
+3. Add/import a profile. VPN mode requires a WireGuard/AmneziaWG client config.
+4. Connecting in VPN mode requests administrator authorization to run the
+   bundled helper. Only the helper creates utun and changes network routes/DNS;
+   the GUI and VPN protocol engine remain unprivileged.
+5. FT in the menu bar opens or quits FreeTurn. Closing the window can keep the
+   connection active; use Disconnect or Quit to stop it.
+
+Updates: download from Settings or the repository Releases page. Quit FreeTurn,
+replace the complete .app in Applications, and reopen it. Profiles remain in
+~/Library/Application Support/FreeTurnDesktop. Automatic bundle replacement is
+not enabled in this first macOS release.
+
+No Developer ID signature/notarization is included unless the release explicitly
+says otherwise. No credentials are needed for downloading releases.
