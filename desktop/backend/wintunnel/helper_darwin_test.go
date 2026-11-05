@@ -3,6 +3,7 @@
 package wintunnel
 
 import (
+	"golang.org/x/sys/unix"
 	"net"
 	"net/netip"
 	"os"
@@ -78,5 +79,34 @@ func TestMacHelperAuthenticatesUnixSocketPeer(t *testing.T) {
 	}
 	if os.Getuid() != 0 && requireRootPeer(conn) == nil {
 		t.Fatal("non-root helper accepted")
+	}
+}
+
+// Exercise the actual Darwin socket options without sending traffic or changing
+// routes. The GUI must be able to protect both address families without root.
+func TestMacProtectorBindsBothSocketFamilies(t *testing.T) {
+	iface, err := net.InterfaceByName("lo0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	protector := darwinProtector{v4: iface.Index, v6: iface.Index}
+	for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
+		fd, err := unix.Socket(family, unix.SOCK_STREAM, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !protector.Protect(fd) {
+			_ = unix.Close(fd)
+			t.Fatalf("protect failed for family %d", family)
+		}
+		level, option := unix.IPPROTO_IP, unix.IP_BOUND_IF
+		if family == unix.AF_INET6 {
+			level, option = unix.IPPROTO_IPV6, unix.IPV6_BOUND_IF
+		}
+		bound, err := unix.GetsockoptInt(fd, level, option)
+		_ = unix.Close(fd)
+		if err != nil || bound != iface.Index {
+			t.Fatalf("bound interface: %d %v", bound, err)
+		}
 	}
 }
