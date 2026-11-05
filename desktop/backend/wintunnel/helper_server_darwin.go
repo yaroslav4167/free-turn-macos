@@ -77,6 +77,8 @@ func serveDarwinHelper(conn *net.UnixConn) error {
 	}
 	state, dev, err := prepareHelper(request.Params)
 	if err != nil {
+		_, _, _ = conn.WriteMsgUnix([]byte{0}, nil, nil)
+		_ = json.NewEncoder(conn).Encode(helperReply{Error: err.Error()})
 		return err
 	}
 	defer dev.Close()
@@ -160,11 +162,11 @@ func command(path string, args ...string) (string, error) {
 	return string(out), nil
 }
 func physicalInterface(ipv6 bool) (string, error) {
-	family := "-inet"
+	family, destination := "-inet", "1.1.1.1"
 	if ipv6 {
-		family = "-inet6"
+		family, destination = "-inet6", "2606:4700:4700::1111"
 	}
-	out, err := command("/sbin/route", "-n", "get", family, "default")
+	out, err := command("/sbin/route", "-n", "get", family, destination)
 	if err != nil {
 		return "", err
 	}

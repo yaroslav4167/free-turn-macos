@@ -169,6 +169,15 @@ func initializeHelper(conn *net.UnixConn, params *mobile.TunnelParams) (*helperC
 		_ = conn.Close()
 		return nil, -1, "", "", fmt.Errorf("receive utun descriptor: %v", err)
 	}
+	if data[0] == 0 {
+		var reply helperReply
+		decodeErr := json.NewDecoder(io.LimitReader(conn, 4096)).Decode(&reply)
+		_ = conn.Close()
+		if decodeErr != nil {
+			return nil, -1, "", "", decodeErr
+		}
+		return nil, -1, "", "", fmt.Errorf("macOS VPN helper: %s", reply.Error)
+	}
 	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 	if err != nil || len(msgs) != 1 {
 		_ = conn.Close()

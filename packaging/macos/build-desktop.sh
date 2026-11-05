@@ -19,8 +19,8 @@ npm --prefix desktop/frontend ci
  cd desktop
  "$gobin/wails" build -platform "darwin/$arch" -ldflags "-checklinkname=0 -s -w -X main.desktopVersion=$version -X main.updateRepository=$repository" -trimpath
 )
-# Wails names the bundle after outputfilename. Rename only inside a fresh stage.
-bundle="$root/desktop/build/bin/freeturn-desktop.app"
+# Wails names the bundle after the configured project name.
+bundle="$root/desktop/build/bin/FreeTurn.app"
 [ -d "$bundle" ] || { echo "Missing Wails app bundle: $bundle" >&2; exit 1; }
 mkdir -p dist
 stage=$(mktemp -d "$root/dist/.macos-package.XXXXXX")
