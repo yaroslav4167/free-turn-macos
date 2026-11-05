@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	amtun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"github.com/samosvalishe/free-turn-proxy/desktop/backend/vpnservice"
 	"github.com/samosvalishe/free-turn-proxy/mobile"
 	"golang.org/x/sys/unix"
@@ -117,7 +116,7 @@ func TestMacHelperClientDisconnectCancelsPreparationAndReleasesSlot(t *testing.T
 	entered, released := make(chan struct{}, 2), make(chan struct{}, 2)
 	done := make(chan error, 1)
 	completed := make(chan struct{}, 2)
-	prepare := func(ctx context.Context, _ *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+	prepare := func(ctx context.Context, _ *mobile.TunnelParams) (*helperState, helperDevice, error) {
 		entered <- struct{}{}
 		<-ctx.Done()
 		released <- struct{}{}
@@ -171,7 +170,7 @@ func TestMacHelperInitializationOutlivesRequestReadTimeout(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- serveHelperListener(ctx, listener, uint32(os.Getuid()), func(conn *net.UnixConn, acquire func() (func(), error)) error {
-			return serveDarwinHelperSessionWithPrepare(conn, acquire, func(ctx context.Context, _ *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+			return serveDarwinHelperSessionWithPrepare(conn, acquire, func(ctx context.Context, _ *mobile.TunnelParams) (*helperState, helperDevice, error) {
 				select {
 				case <-time.After(16 * time.Second):
 					return nil, nil, errors.New("slow initialization completed")
@@ -295,6 +294,12 @@ func TestMacServiceUnprivilegedProbe(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		flags, flagErr := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
+		if flagErr != nil || flags&unix.O_NONBLOCK == 0 {
+			unix.Close(fd)
+			client.Close()
+			t.Fatalf("utun descriptor is blocking: flags=%d error=%v", flags, flagErr)
+		}
 		// No VPN route or DNS is installed; exercise real utun descriptor passing.
 		other, otherFD, _, _, overlapErr := startHelper(params)
 		if overlapErr == nil {
@@ -346,6 +351,10 @@ func TestMacPrivilegedPersistentService(t *testing.T) {
 	// No osascript or password cache exists in this subprocess. The installed
 	// daemon accepts repeated user sessions, also after a launchd restart.
 	probe()
+	policy, policyErr := exec.Command("/bin/launchctl", "print", "system/"+vpnservice.Label(uid)).CombinedOutput()
+	if policyErr != nil || !strings.Contains(string(policy), "spawn type = interactive") {
+		t.Fatalf("VPN service is subject to background throttling: %s %v", policy, policyErr)
+	}
 	if out, err := exec.Command("/bin/launchctl", "kickstart", "-k", "system/"+vpnservice.Label(uid)).CombinedOutput(); err != nil {
 		t.Fatalf("restart: %s %v", out, err)
 	}

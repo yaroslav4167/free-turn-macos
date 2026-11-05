@@ -94,6 +94,10 @@ func control(args ...string) error {
 	}
 	return nil
 }
+
+// VPN setup runs on a user connection request. Background classification
+// throttles the helper and its route/ifconfig children on busy Macs. Unix IPC
+// cannot supply the XPC transactions required by the Adaptive classification.
 func daemonPlist(uid uint32) string {
 	// Every substituted value is generated exclusively from a validated UID.
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -104,7 +108,7 @@ func daemonPlist(uid uint32) string {
 <key>UserName</key><string>root</string><key>GroupName</key><string>wheel</string>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>ThrottleInterval</key><integer>5</integer><key>ExitTimeOut</key><integer>20</integer>
-<key>ProcessType</key><string>Background</string><key>Umask</key><integer>63</integer>
+<key>ProcessType</key><string>Interactive</string><key>Umask</key><integer>63</integer>
 <key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
 </dict></plist>
 `, Label(uid), HelperPath(uid), uid)

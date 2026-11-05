@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	amtun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"github.com/samosvalishe/free-turn-proxy/mobile"
 	"golang.org/x/sys/unix"
 )
@@ -74,7 +73,10 @@ func serveDarwinHelper(conn *net.UnixConn) error {
 func serveDarwinHelperSession(conn *net.UnixConn, acquire func() (func(), error)) error {
 	return serveDarwinHelperSessionWithPrepare(conn, acquire, prepareHelperContext)
 }
-func serveDarwinHelperSessionWithPrepare(conn *net.UnixConn, acquire func() (func(), error), prepare func(context.Context, *mobile.TunnelParams) (*helperState, amtun.Device, error)) error {
+func serveDarwinHelperSessionWithPrepare(conn *net.UnixConn, acquire func() (func(), error), prepare func(context.Context, *mobile.TunnelParams) (*helperState, helperDevice, error)) error {
+	// Close only after resource cleanup and slot release, so a client's Close
+	// acknowledgement also means that reconnecting is safe.
+	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	reader := bufio.NewReaderSize(conn, 64*1024+1)
 	var request helperRequest
@@ -98,7 +100,7 @@ func serveDarwinHelperSessionWithPrepare(conn *net.UnixConn, acquire func() (fun
 	}
 	_ = conn.SetReadDeadline(time.Time{})
 	sessionCtx, cancel := context.WithCancel(context.Background())
-	defer func() { cancel(); _ = conn.Close() }()
+	defer cancel()
 	requests := readSessionRequests(sessionCtx, cancel, reader)
 	initCtx, stopInit := context.WithTimeout(sessionCtx, 45*time.Second)
 	state, dev, err := prepare(initCtx, request.Params)
@@ -112,7 +114,7 @@ func serveDarwinHelperSessionWithPrepare(conn *net.UnixConn, acquire func() (fun
 	defer state.cleanup()
 	// SCM_RIGHTS is sent on a single marker byte; the JSON reply is a separate
 	// frame so a short stream read cannot truncate initialization metadata.
-	if _, _, err = conn.WriteMsgUnix([]byte{1}, unix.UnixRights(int(dev.File().Fd())), nil); err != nil {
+	if _, _, err = conn.WriteMsgUnix([]byte{1}, unix.UnixRights(dev.Descriptor()), nil); err != nil {
 		return err
 	}
 	if err = json.NewEncoder(conn).Encode(helperReply{Dev4: state.dev4, Dev6: state.dev6}); err != nil {
@@ -357,10 +359,10 @@ func (s *helperState) ensurePhysicalDefault(r physicalNetworkRoute) error {
 	s.routes = append(s.routes, r.defaultArgs("delete"))
 	return nil
 }
-func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+func prepareHelper(params *mobile.TunnelParams) (*helperState, helperDevice, error) {
 	return prepareHelperContext(context.Background(), params)
 }
-func prepareHelperContext(ctx context.Context, params *mobile.TunnelParams) (*helperState, amtun.Device, error) {
+func prepareHelperContext(ctx context.Context, params *mobile.TunnelParams) (*helperState, helperDevice, error) {
 	if params == nil || params.MTU < 576 || params.MTU > 9000 {
 		return nil, nil, errors.New("invalid tunnel MTU")
 	}
@@ -382,7 +384,7 @@ func prepareHelperContext(ctx context.Context, params *mobile.TunnelParams) (*he
 	if err := ctx.Err(); err != nil {
 		return nil, nil, fmt.Errorf("discover physical network: %w", err)
 	}
-	dev, err := amtun.CreateTUN("utun", params.MTU)
+	dev, err := createHelperTUN(params.MTU)
 	if err != nil {
 		return nil, nil, err
 	}

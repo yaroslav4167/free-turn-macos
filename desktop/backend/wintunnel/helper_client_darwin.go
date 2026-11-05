@@ -231,6 +231,11 @@ func initializeHelper(conn *net.UnixConn, params *mobile.TunnelParams) (*helperC
 		return nil, -1, "", "", errors.New("invalid TUN descriptor from VPN helper")
 	}
 	unix.CloseOnExec(fds[0])
+	if err := unix.SetNonblock(fds[0], true); err != nil {
+		_ = unix.Close(fds[0])
+		_ = conn.Close()
+		return nil, -1, "", "", err
+	}
 	var reply helperReply
 	if err := json.NewDecoder(io.LimitReader(conn, 4096)).Decode(&reply); err != nil || reply.Error != "" {
 		_ = unix.Close(fds[0])

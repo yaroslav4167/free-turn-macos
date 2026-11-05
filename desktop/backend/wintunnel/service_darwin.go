@@ -15,7 +15,7 @@ import (
 	"github.com/samosvalishe/free-turn-proxy/desktop/backend/vpnservice"
 )
 
-const helperProtocol = 2
+const helperProtocol = 3
 
 // RunService stays idle between connections. Each session owns its own utun,
 // routes and DNS; loss of the client or daemon shutdown releases all three.
