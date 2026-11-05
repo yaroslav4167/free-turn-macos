@@ -1,13 +1,12 @@
-## FreeTurn for macOS — first native build
+## v0.1.1 — restore macOS VPN traffic
 
-- Shared desktop UI from Linux v2.6.5: centered notification overlays, retained settings, compact connection view, server management, routing lists, traffic charts and Russian/English localization.
-- Native macOS `utun` VPN with administrator-authorized helper, descriptor passing, physical-interface socket protection and temporary session-owned DNS.
-- FT menu bar item, native captcha notifications, optional start at login and ICMP server latency.
-- Separate `.app` downloads for Apple Silicon (`arm64`) and Intel (`amd64`), with SHA-256 checksums.
-- Update checking and verified downloads. Quit the app and replace the entire bundle using Finder; automatic bundle replacement is disabled.
+- Fix `network is unreachable` for additional TURN streams after VPN routes are installed. Preserve interface-scoped defaults through the physical gateway before activating VPN routes for ordinary traffic.
+- Retain pre-existing scoped defaults; remove only helper-owned routes during disconnect. Reject connection setup if the protected physical path cannot be established.
+- Propagate socket-protection failures instead of silently opening an unprotected connection.
+- Add a privileged regression test on isolated Apple Silicon and Intel macOS runners. The test reproduced the v0.1.0 failure using temporary non-production routes and a UDP route lookup; it requires no VPN profile or external server.
 
-Requires macOS 13 or later. Extract the ZIP and move `FreeTurn.app` to Applications.
+Quit FreeTurn completely, replace the **entire FreeTurn.app** (including its bundled helper), and reconnect the VPN.
 
-These builds are ad-hoc signed, **not Apple-notarized**. Gatekeeper may require approval in System Settings → Privacy & Security after the first launch attempt. No Developer ID certificate was configured.
+Requires macOS 13+. Choose `arm64` for Apple Silicon or `amd64` for Intel. Archives include SHA-256 checksums.
 
-Platform code, unit tests and native builds are checked automatically. Live VPN traffic against a real profile still requires manual acceptance on both architectures; this first release should be treated as experimental.
+Builds remain ad-hoc signed and are **not Apple-notarized**. This release is experimental; live traffic through your specific VPS/profile still needs acceptance testing.

@@ -14,7 +14,7 @@ The first macOS version is experimental: automated builds and tests do not repla
 
 Import a profile or add a server, including its WireGuard/AmneziaWG client configuration. On VPN connection, macOS requests administrator authorization for the bundled helper. The app interface and VPN protocol engine run without root.
 
-The helper creates an available `utun`, configures addresses and routes, and transfers its descriptor over a private authenticated Unix socket. The relay's sockets are bound to the physical interface. Ordinary traffic, including SSH server management, follows profile routes. Full-tunnel routes are installed as two more-specific halves; the physical default routes are preserved.
+The helper creates an available `utun`, configures addresses and routes, and transfers its descriptor over a private authenticated Unix socket. The relay's sockets are bound to the physical interface. Before enabling VPN routes, the helper ensures a scoped default through the physical gateway for those sockets; existing scoped defaults are retained and only helper-owned routes are removed on disconnect. Ordinary traffic, including SSH server management, follows profile routes. Full-tunnel routes are installed as two more-specific halves; the physical default routes are preserved.
 
 DNS is a temporary SystemConfiguration session entry. Closing or losing the helper removes that entry, rather than permanently rewriting Wi-Fi DNS settings. Disconnect/quit removes routes added by the helper. A second VPN owning the default route is rejected; disconnect it before connecting FreeTurn.
 
@@ -33,7 +33,7 @@ Profiles and preferences are stored in `~/Library/Application Support/FreeTurnDe
 Install Xcode Command Line Tools, the Go version in `go.mod`, and Node.js 22.18+.
 
 ```sh
-UPDATE_REPOSITORY=yaroslav4167/free-turn-macos RELEASE_TAG=v0.1.0 sh packaging/macos/build-desktop.sh
+UPDATE_REPOSITORY=yaroslav4167/free-turn-macos RELEASE_TAG=v0.1.1 sh packaging/macos/build-desktop.sh
 ```
 
 The script builds Wails v2.16.0, packages the native VPN helper inside the app, ad-hoc signs the bundle, verifies its signature, and produces a ZIP and SHA-256 in `dist/`. `MACOS_ARCH=arm64` or `MACOS_ARCH=amd64` selects the architecture. GitHub Actions builds and tests each architecture on its own macOS runner.

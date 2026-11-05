@@ -23,10 +23,12 @@ import (
 )
 
 type helperState struct {
-	name, dev4, dev6 string
-	routes           [][]string
-	dns              uintptr
-	applied          bool
+	name, dev4, dev6     string
+	physical4, physical6 physicalNetworkRoute
+	run                  func(string, ...string) (string, error)
+	routes               [][]string
+	dns                  uintptr
+	applied              bool
 }
 
 func RunHelper(socketPath string) error {
@@ -161,28 +163,124 @@ func command(path string, args ...string) (string, error) {
 	}
 	return string(out), nil
 }
-func physicalInterface(ipv6 bool) (string, error) {
+
+// Keep the actual physical gateway before any VPN routes are added. A socket
+// bound to en0 needs a route in en0's scope, not just a global default route.
+type physicalNetworkRoute struct {
+	device, gateway string
+	ipv6            bool
+	direct          bool
+}
+
+func parsePhysicalNetworkRoute(output string, ipv6 bool) (physicalNetworkRoute, error) {
+	result := physicalNetworkRoute{ipv6: ipv6}
+	gatewayRoute := false
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		switch fields[0] {
+		case "interface:":
+			result.device = fields[1]
+		case "gateway:":
+			result.gateway = fields[1]
+		case "flags:":
+			gatewayRoute = strings.Contains(fields[1], "GATEWAY")
+		}
+	}
+	if result.device == "" || strings.HasPrefix(result.device, "utun") {
+		return result, errors.New("physical network interface not found or another VPN owns the route")
+	}
+	ip, err := netip.ParseAddr(result.gateway)
+	if err != nil {
+		if gatewayRoute {
+			return result, fmt.Errorf("invalid physical gateway %q", result.gateway)
+		}
+		result.direct = true
+		result.gateway = ""
+	} else if ip.Is6() != ipv6 || (ip.Zone() != "" && ip.Zone() != result.device) {
+		return result, errors.New("physical gateway has wrong address family or interface zone")
+	}
+	return result, nil
+}
+func discoverPhysicalNetworkRoute(ipv6 bool) (physicalNetworkRoute, error) {
 	family, destination := "-inet", "1.1.1.1"
 	if ipv6 {
 		family, destination = "-inet6", "2606:4700:4700::1111"
 	}
 	out, err := command("/sbin/route", "-n", "get", family, destination)
 	if err != nil {
-		return "", err
+		return physicalNetworkRoute{}, err
 	}
-	for _, line := range strings.Split(out, "\n") {
+	result, err := parsePhysicalNetworkRoute(out, ipv6)
+	if err != nil {
+		return result, err
+	}
+	_, err = net.InterfaceByName(result.device)
+	return result, err
+}
+func (r physicalNetworkRoute) family() string {
+	if r.ipv6 {
+		return "-inet6"
+	}
+	return "-inet"
+}
+func (r physicalNetworkRoute) defaultArgs(operation string) []string {
+	args := []string{"-n", operation, r.family(), "-ifscope", r.device, "default"}
+	if r.direct {
+		return append(args, "-interface", r.device)
+	}
+	return append(args, r.gateway)
+}
+func scopedDefaultExists(output, device string) bool {
+	foundDevice, foundScope, foundDefault := false, false, false
+	zeroDestination, zeroMask := false, false
+	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 2 && fields[0] == "interface:" {
-			if strings.HasPrefix(fields[1], "utun") {
-				return "", errors.New("another VPN owns the default route; disconnect it first")
+		if len(fields) != 2 {
+			continue
+		}
+		switch fields[0] {
+		case "interface:":
+			foundDevice = fields[1] == device
+		case "destination:":
+			foundDefault = fields[1] == "default"
+			zeroDestination = fields[1] == "0.0.0.0" || fields[1] == "::"
+		case "mask:":
+			zeroMask = fields[1] == "default" || fields[1] == "0.0.0.0" || fields[1] == "::"
+		case "flags:":
+			for _, flag := range strings.Split(strings.Trim(fields[1], "<>"), ",") {
+				foundScope = foundScope || flag == "IFSCOPE"
 			}
-			if _, err := net.InterfaceByName(fields[1]); err != nil {
-				return "", err
-			}
-			return fields[1], nil
 		}
 	}
-	return "", errors.New("physical network interface not found")
+	return foundDevice && foundScope && (foundDefault || (zeroDestination && zeroMask))
+}
+func (s *helperState) runCommand(path string, args ...string) (string, error) {
+	if s.run != nil {
+		return s.run(path, args...)
+	}
+	return command(path, args...)
+}
+func (s *helperState) ensurePhysicalDefault(r physicalNetworkRoute) error {
+	if r.device == "" {
+		return nil
+	} // No physical IPv6 path is a valid IPv4-only host.
+	get := []string{"-n", "get", r.family(), "-ifscope", r.device, "default"}
+	out, err := s.runCommand("/sbin/route", get...)
+	if err == nil && scopedDefaultExists(out, r.device) {
+		return nil
+	}
+	if _, err = s.runCommand("/sbin/route", r.defaultArgs("add")...); err != nil {
+		// A route installed concurrently belongs to its owner, not to this helper.
+		if out, queryErr := s.runCommand("/sbin/route", get...); queryErr == nil && scopedDefaultExists(out, r.device) {
+			return nil
+		}
+		return fmt.Errorf("preserve physical %s route on %s: %w", r.family(), r.device, err)
+	}
+	s.routes = append(s.routes, r.defaultArgs("delete"))
+	return nil
 }
 func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, error) {
 	if params == nil || params.MTU < 576 || params.MTU > 9000 {
@@ -198,11 +296,11 @@ func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, err
 	if _, err := parseDNS(params.DNS); err != nil {
 		return nil, nil, err
 	}
-	dev4, err := physicalInterface(false)
+	physical4, err := discoverPhysicalNetworkRoute(false)
 	if err != nil {
 		return nil, nil, err
 	}
-	dev6, _ := physicalInterface(true)
+	physical6, _ := discoverPhysicalNetworkRoute(true)
 	dev, err := amtun.CreateTUN("utun", params.MTU)
 	if err != nil {
 		return nil, nil, err
@@ -212,7 +310,7 @@ func prepareHelper(params *mobile.TunnelParams) (*helperState, amtun.Device, err
 		_ = dev.Close()
 		return nil, nil, err
 	}
-	state := &helperState{name: name, dev4: dev4, dev6: dev6}
+	state := &helperState{name: name, dev4: physical4.device, dev6: physical6.device, physical4: physical4, physical6: physical6}
 	for _, address := range addresses {
 		var args []string
 		if address.Addr().Is4() {
@@ -265,13 +363,19 @@ func (s *helperState) installRoutes(params *mobile.TunnelParams) error {
 	if err != nil {
 		return err
 	}
+	if err := s.ensurePhysicalDefault(s.physical4); err != nil {
+		return err
+	}
+	if err := s.ensurePhysicalDefault(s.physical6); err != nil {
+		return err
+	}
 	for _, p := range prefixes {
 		family := "-inet"
 		if p.Addr().Is6() {
 			family = "-inet6"
 		}
 		args := []string{"-n", "add", family, p.String(), "-interface", s.name}
-		if _, err := command("/sbin/route", args...); err != nil {
+		if _, err := s.runCommand("/sbin/route", args...); err != nil {
 			return err
 		}
 		s.routes = append(s.routes, []string{"-n", "delete", family, p.String(), "-interface", s.name})
@@ -294,6 +398,7 @@ func (s *helperState) cleanup() {
 		s.dns = 0
 	}
 	for i := len(s.routes) - 1; i >= 0; i-- {
-		_, _ = command("/sbin/route", s.routes[i]...)
+		_, _ = s.runCommand("/sbin/route", s.routes[i]...)
 	}
+	s.routes = nil
 }

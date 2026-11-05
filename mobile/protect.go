@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"errors"
 	"sync/atomic"
 	"syscall"
 
@@ -24,7 +25,14 @@ func SetProtect(p Protector) {
 	}
 	protector.Store(&p)
 	netctl.SetControl(func(_, _ string, c syscall.RawConn) error {
-		return c.Control(func(fd uintptr) { p.Protect(int(fd)) })
+		protected := false
+		if err := c.Control(func(fd uintptr) { protected = p.Protect(int(fd)) }); err != nil {
+			return err
+		}
+		if !protected {
+			return errors.New("cannot protect socket from VPN routing")
+		}
+		return nil
 	})
 }
 

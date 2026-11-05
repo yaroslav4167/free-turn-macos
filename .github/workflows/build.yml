@@ -35,7 +35,7 @@ jobs:
       - name: Build signed app bundle
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: v0.1.0
+          RELEASE_TAG: v0.1.1
           UPDATE_REPOSITORY: ${{ github.repository }}
         run: sh packaging/macos/build-desktop.sh
       - name: Frontend regression checks

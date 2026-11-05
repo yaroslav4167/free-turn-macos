@@ -40,6 +40,8 @@ jobs:
         run: |
           npm --prefix desktop/frontend test
           go test ./desktop/... ./internal/session ./mobile
+          go test -c ./desktop/backend/wintunnel -o "$RUNNER_TEMP/wintunnel-routing.test"
+          sudo -n env FREETURN_PRIVILEGED_TESTS=1 "$RUNNER_TEMP/wintunnel-routing.test" -test.run '^TestMacPrivilegedScopedRouting$' -test.v -test.timeout 45s
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: release-${{ matrix.arch }}
