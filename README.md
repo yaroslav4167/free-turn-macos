@@ -1,3 +1,8 @@
+> **Development moved to [FreeTurn Desktop](https://github.com/yaroslav4167/free-turn-desktop).**
+> Update directly to **v3.0.0** from your existing client; no intermediate version is required.
+> These are the same verified v3.0.0 binaries, already configured to get future updates from the unified repository.
+> Profiles and settings are preserved. [Direct-update release](releases/tag/v3.0.0).
+
 # FreeTurn for macOS
 
 Native macOS desktop VPN client based on [FreeTurn Linux](https://github.com/yaroslav4167/free-turn-linux/tree/feat/linux-desktop-experience) v2.6.5 (`09ab3f9`). The shared Wails/React UI includes profiles, server setup and management, WireGuard/AmneziaWG through TURN, routing lists, traffic charts, centered notifications, and Russian/English localization.
