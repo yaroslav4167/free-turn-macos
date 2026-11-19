@@ -1,7 +1,7 @@
 > **Development moved to [FreeTurn Desktop](https://github.com/yaroslav4167/free-turn-desktop).**
 > Update directly to **v3.0.0** from your existing client; no intermediate version is required.
 > These are the same verified v3.0.0 binaries, already configured to get future updates from the unified repository.
-> Profiles and settings are preserved. [Direct-update release](releases/tag/v3.0.0).
+> Profiles and settings are preserved. [Direct-update release](https://github.com/yaroslav4167/free-turn-macos/releases/tag/v3.0.0).
 
 # FreeTurn for macOS
 
