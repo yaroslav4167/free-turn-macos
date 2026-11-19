@@ -36,7 +36,7 @@ jobs:
         env:
           MACOS_ARCH: ${{ matrix.arch }}
           RELEASE_TAG: v0.2.2
-          UPDATE_REPOSITORY: ${{ github.repository }}
+          UPDATE_REPOSITORY: yaroslav4167/free-turn-desktop
         run: sh packaging/macos/build-desktop.sh
       - name: Frontend regression checks
         run: npm --prefix desktop/frontend test

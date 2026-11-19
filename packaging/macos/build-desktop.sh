@@ -7,7 +7,7 @@ cd "$root"
 arch=${MACOS_ARCH:-$(go env GOARCH)}
 case "$arch" in arm64|amd64) ;; *) echo 'MACOS_ARCH must be arm64 or amd64' >&2; exit 1;; esac
 version=${RELEASE_TAG:-${VERSION:-dev}}
-repository=${UPDATE_REPOSITORY:-yaroslav4167/free-turn-macos}
+repository=${UPDATE_REPOSITORY:-yaroslav4167/free-turn-desktop}
 case "$version" in ''|*[!a-zA-Z0-9._+-]*) echo 'Invalid release version' >&2; exit 1;; esac
 case "$repository" in *[!a-zA-Z0-9_./-]*) echo 'Invalid update repository' >&2; exit 1;; esac
 export MACOSX_DEPLOYMENT_TARGET=13.0

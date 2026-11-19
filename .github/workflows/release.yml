@@ -34,7 +34,7 @@ jobs:
         env:
           MACOS_ARCH: ${{ matrix.arch }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-          UPDATE_REPOSITORY: ${{ github.repository }}
+          UPDATE_REPOSITORY: yaroslav4167/free-turn-desktop
         run: sh packaging/macos/build-desktop.sh
       - name: Test packaged source
         run: |
@@ -83,7 +83,7 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: FreeTurn macOS ${{ inputs.tag || github.ref_name }}
-          body_path: RELEASE_NOTES_MACOS.md
+          body_path: MIGRATION_RELEASE.md
           files: |
             dist/*.zip
             dist/checksums.txt

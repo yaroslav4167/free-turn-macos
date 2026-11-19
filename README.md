@@ -1,5 +1,9 @@
 # FreeTurn for macOS
 
+> Development moved to [FreeTurn Desktop](https://github.com/yaroslav4167/free-turn-desktop).
+> Install bridge update **v0.2.3**, then check for updates again.
+> Profiles, settings and the installed helper are preserved. [Migration notes](MIGRATION_RELEASE.md).
+
 Native macOS desktop VPN client based on [FreeTurn Linux](https://github.com/yaroslav4167/free-turn-linux/tree/feat/linux-desktop-experience) v2.6.5 (`09ab3f9`). The shared Wails/React UI includes profiles, server setup and management, WireGuard/AmneziaWG through TURN, routing lists, traffic charts, centered notifications, and Russian/English localization.
 
 ## Download and install

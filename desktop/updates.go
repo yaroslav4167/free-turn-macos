@@ -17,7 +17,7 @@ import (
 
 // Set by release builds, independently of the proxy core's version.
 var desktopVersion = "dev"
-var updateRepository = ""
+var updateRepository = "yaroslav4167/free-turn-desktop"
 
 func (a *App) startUpdateChecks(ctx context.Context) {
 	ctx, a.updateCancel = context.WithCancel(ctx)

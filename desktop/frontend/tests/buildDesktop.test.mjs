@@ -21,10 +21,10 @@ test('workflows use Node 24-compatible actions without changing the frontend Nod
   assert.match(readFileSync(join(root, '.github/workflows/release.yml'), 'utf8'), /softprops\/action-gh-release@v3\.0\.3/)
 })
 
-test('GitHub workflows inject their own repository into update builds', () => {
+test('bridge workflows target the unified update repository', () => {
   for (const name of ['build.yml', 'release.yml']) {
     const workflow = readFileSync(join(root, '.github/workflows', name), 'utf8')
-    assert.match(workflow, /UPDATE_REPOSITORY: \$\{\{ github\.repository \}\}/)
+    assert.match(workflow, /UPDATE_REPOSITORY: yaroslav4167\/free-turn-desktop/)
   }
   const script = readFileSync(join(root, 'packaging/macos/build-desktop.sh'), 'utf8')
   assert.match(script, /-X main\.updateRepository=\$repository/)
